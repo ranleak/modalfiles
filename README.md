@@ -8,16 +8,18 @@ deploying the service needs their own Modal account and CLI credentials.
 
 ## Deploy
 
-1. Install Python 3.10+ and create an environment: `python -m venv .venv`,
-   then activate it and run `pip install -r requirements.txt`.
-2. Run `modal setup` and sign into your own Modal account/workspace.
+1. Install Python 3.10+ and [uv](https://docs.astral.sh/uv/) (for example with
+   `curl -LsSf https://astral.sh/uv/install.sh | sh` or `pipx install uv`),
+   then run `uv sync` in the repository. This creates `.venv` and installs the
+   locked dependencies from `uv.lock` (including the `dev` group for tests).
+2. Run `uv run modal setup` and sign into your own Modal account/workspace.
 3. Create a Modal Secret named `modalfiles-auth` containing **both**
    `MODALFILES_USER` and `MODALFILES_PASSWORD`. Use a unique username and a
    long, random password. Create it in the Modal dashboard, or securely provide
-   a temporary dotenv file with `modal secret create modalfiles-auth --from-dotenv /path/to/private.env`.
+   a temporary dotenv file with `uv run modal secret create modalfiles-auth --from-dotenv /path/to/private.env`.
    Remove the local secret file afterwards. Do not commit it or put passwords
    in shell history. The secret must be in the same Modal environment as the app.
-4. Run `modal deploy --strategy recreate modal_app.py`. Copy the HTTPS URL
+4. Run `uv run modal deploy --strategy recreate modal_app.py`. Copy the HTTPS URL
    printed for the `web` endpoint (not the Modal dashboard URL). Recreate is
    important: rolling deployments can temporarily run two writers.
 
@@ -76,6 +78,16 @@ archives can take longer than a Windows client or Modal web request timeout.
 
 ## Local tests
 
-`pip install -r requirements.txt pytest httpx` then `python -m pytest -q`.
+`uv sync` then `uv run pytest -q`.
 Tests exercise WebDAV authentication, file operations, volume callbacks and ZIP
 safety locally; they do not deploy to Modal or exercise Windows Explorer.
+
+## Dependency management
+
+Dependencies are declared in `pyproject.toml` and locked in `uv.lock`; both are
+committed. Use `uv add <package>` / `uv remove <package>` to change them, then
+commit the updated lockfile. `uv sync` reproduces the environment exactly
+(`uv sync --frozen` in automation). The Modal image builds its server
+dependencies with `uv pip install` via Modal's `uv_pip_install`. The test-only
+dependencies (`pytest`, `httpx`) live in the `dev` dependency group, which `uv
+sync` installs by default; use `uv sync --no-dev` to skip them.

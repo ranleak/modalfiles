@@ -2,7 +2,7 @@
 import modal
 
 image = (modal.Image.from_registry('ubuntu:24.04', add_python='3.12')
-         .pip_install('fastapi==0.115.12', 'a2wsgi==1.10.10', 'WsgiDAV==4.3.3')
+         .uv_pip_install('fastapi==0.115.12', 'a2wsgi==1.10.10', 'WsgiDAV==4.3.3')
          .add_local_python_source('modalfiles'))
 app = modal.App('modalfiles', image=image)
 volume = modal.Volume.from_name('modalfiles-data', create_if_missing=True)
