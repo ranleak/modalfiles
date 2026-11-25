@@ -19,7 +19,7 @@ from wsgidav.wsgidav_app import WsgiDAVApp
 
 log = logging.getLogger(__name__)
 MAX_ZIP_ENTRIES = 10000
-MAX_ZIP_BYTES = 2 * 1024**3
+MAX_ZIP_BYTES = 10 * 1024**3
 
 
 def extract_zip(archive: Path) -> bool:

@@ -55,7 +55,7 @@ extract it into a sibling folder named after the ZIP (e.g. `photos.zip` →
 is committed and its response is returned. The ZIP remains in place. Existing
 folders are never overwritten. Invalid, encrypted, unsafe, or oversized ZIPs
 are kept unextracted; a failed extraction is logged but does not fail the file
-upload. The limits are 10,000 entries and 2 GiB total uncompressed data. These
+upload. The limits are 10,000 entries and 10 GiB total uncompressed data. These
 limits are safety checks, not a guarantee against resource exhaustion. Large
 archives can take longer than a Windows client or Modal web request timeout.
 
