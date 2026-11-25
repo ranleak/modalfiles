@@ -1,0 +1,4 @@
+modal>=1.0,<2
+fastapi==0.115.12
+a2wsgi==1.10.10
+WsgiDAV==4.3.3
