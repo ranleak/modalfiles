@@ -11,6 +11,7 @@ import json
 import mimetypes
 import os
 import platform
+import socket
 import subprocess
 import sys
 import threading
@@ -85,7 +86,9 @@ class Handler(BaseHTTPRequestHandler):
     server_version = 'ModalFilesGUI/1.0'
 
     def log_message(self, fmt, *args):
-        sys.stderr.write(f'[{self.log_date_time_string()}] {fmt % args}\n')
+        if sys.stderr is not None:
+            sys.stderr.write(f'[{self.log_date_time_string()}] {fmt % args}\n')
+            sys.stderr.flush()
 
     def _send_json(self, obj, status=200):
         data = json.dumps(obj).encode('utf-8')
@@ -157,8 +160,9 @@ class Handler(BaseHTTPRequestHandler):
             self.send_header('X-Accel-Buffering', 'no')
             self.end_headers()
             try:
+                read_fn = getattr(resp, 'read1', resp.read)
                 while True:
-                    chunk = resp.read(4096)
+                    chunk = read_fn(4096)
                     if not chunk:
                         break
                     self.wfile.write(chunk)
@@ -246,11 +250,14 @@ class Handler(BaseHTTPRequestHandler):
         while len(unc) > 3 and unc.endswith('\\'):
             unc = unc[:-1]
         drive = f'{letter}:'
+        flags = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
         try:
             # delete existing mapping first (ignore errors)
-            subprocess.run(['net', 'use', drive, '/delete', '/y'], capture_output=True, text=True)
+            subprocess.run(['net', 'use', drive, '/delete', '/y'],
+                           capture_output=True, text=True, creationflags=flags)
             cmd = ['net', 'use', drive, unc, pwd, f'/user:{user}', '/persistent:yes']
-            r = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=30,
+                               creationflags=flags)
             if r.returncode == 0:
                 self._send_json({'ok': True, 'drive': drive, 'unc': unc})
             else:
@@ -266,8 +273,11 @@ class Handler(BaseHTTPRequestHandler):
         cfg = load_config()
         letter = (cfg.get('drive_letter') or 'Z').strip().upper().rstrip(':')
         drive = f'{letter}:'
+        flags = getattr(subprocess, 'CREATE_NO_WINDOW', 0)
         try:
-            r = subprocess.run(['net', 'use', drive, '/delete', '/y'], capture_output=True, text=True, timeout=20)
+            r = subprocess.run(['net', 'use', drive, '/delete', '/y'],
+                               capture_output=True, text=True, timeout=20,
+                               creationflags=flags)
             self._send_json({'ok': r.returncode == 0, 'output': (r.stdout or r.stderr).strip()})
         except Exception as e:
             self._send_json({'ok': False, 'error': str(e)})
@@ -307,11 +317,74 @@ class Handler(BaseHTTPRequestHandler):
         return self._serve_static(path)
 
 
+class _GUIServer(ThreadingHTTPServer):
+    daemon_threads = True
+    allow_reuse_address = platform.system() != 'Windows'
+
+    def server_bind(self):
+        if platform.system() == 'Windows' and hasattr(socket, 'SO_EXCLUSIVEADDRUSE'):
+            try:
+                self.socket.setsockopt(socket.SOL_SOCKET, socket.SO_EXCLUSIVEADDRUSE, 1)
+            except OSError:
+                pass
+        super().server_bind()
+
+
+def _setup_stdio() -> None:
+    """Ensure sys.stdout and sys.stderr are writable (pythonw.exe sets them to None)."""
+    if sys.stdout is not None and sys.stderr is not None:
+        return
+    stream = None
+    try:
+        log_file = config_dir() / 'gui.log'
+        log_file.parent.mkdir(parents=True, exist_ok=True)
+        if log_file.exists() and log_file.stat().st_size > 1024 * 1024:
+            log_file.write_text('', encoding='utf-8')
+        stream = open(log_file, 'a', encoding='utf-8', buffering=1)
+    except Exception:
+        try:
+            stream = open(os.devnull, 'a', encoding='utf-8', buffering=1)
+        except Exception:
+            return
+    if sys.stdout is None:
+        sys.stdout = stream
+    if sys.stderr is None:
+        sys.stderr = stream
+
+
+def _is_gui_running(port: int) -> bool:
+    if port <= 0:
+        return False
+    try:
+        req = urllib.request.Request(f'http://127.0.0.1:{port}/local/api/config', method='GET')
+        with urllib.request.urlopen(req, timeout=0.5) as resp:
+            server_hdr = resp.headers.get('Server', '')
+            return server_hdr.startswith('ModalFilesGUI/')
+    except Exception:
+        return False
+
+
 def run(port: int = DEFAULT_PORT, open_browser: bool = True):
+    _setup_stdio()
     mimetypes.add_type('text/css', '.css')
     mimetypes.add_type('application/javascript', '.js')
-    server = ThreadingHTTPServer(('127.0.0.1', port), Handler)
     url = f'http://127.0.0.1:{port}/'
+    if port > 0 and _is_gui_running(port):
+        print(f'{APP_NAME} GUI already running at {url}')
+        if open_browser:
+            _open_app(url)
+        return
+    try:
+        server = _GUIServer(('127.0.0.1', port), Handler)
+    except OSError:
+        if port > 0 and _is_gui_running(port):
+            print(f'{APP_NAME} GUI already running at {url}')
+            if open_browser:
+                _open_app(url)
+            return
+        raise
+    actual_port = server.server_address[1]
+    url = f'http://127.0.0.1:{actual_port}/'
     print(f'{APP_NAME} GUI running at {url}')
     if open_browser:
         threading.Timer(0.4, lambda: _open_app(url)).start()
