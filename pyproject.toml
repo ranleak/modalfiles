@@ -1,6 +1,6 @@
 [project]
 name = "modalfiles"
-version = "0.1.0"
+version = "0.2.0"
 description = "Self-hosted, password-protected WebDAV file share backed by a Modal Volume."
 readme = "README.md"
 license = "MIT"
@@ -12,6 +12,9 @@ dependencies = [
     "a2wsgi==1.10.10",
     "WsgiDAV==4.3.3",
 ]
+
+[project.scripts]
+modalfiles-gui = "modalfiles.gui.server:main"
 
 [dependency-groups]
 dev = [
@@ -25,3 +28,4 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["modalfiles"]
+artifacts = ["modalfiles/gui/static/**"]
