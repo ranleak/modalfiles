@@ -27,16 +27,60 @@ The named `modalfiles-data` Volume is created if needed and persists across
 container restarts and redeployments. Modal usage and storage charges apply.
 Back up the volume independently; this is not a versioned backup system.
 
-## Windows setup
+## Windows GUI
 
-On Linux, install MinGW-w64 (on Ubuntu: `sudo apt install gcc-mingw-w64-x86-64`),
-then run `./scripts/build-windows.sh`. Copy `dist/ModalFiles-Setup.exe` to the
-Windows machine and run it. It asks for the base HTTPS endpoint URL, a drive
-letter and the WebDAV username; Windows `net use` prompts for the password. It
-creates a persistent network drive, not a background sync client. Re-run it on
-other Windows accounts or machines. To disconnect, run `net use Z: /delete`
-with the actual drive letter. This unsigned executable may trigger Windows
-SmartScreen; build and sign it yourself if distributing it.
+The Windows GUI is a local desktop dashboard for ModalFiles. It provides a
+better file-system viewing experience, live server metrics, total data
+transferred, streaming server logs, and cloud ZIP progress. It can also map or
+disconnect the WebDAV drive on Windows and trigger cloud 7-Zip compression for
+folders that do not already have a corresponding ZIP.
+
+### Build on Linux
+
+Install the Windows build tools on Linux:
+
+```bash
+sudo apt install gcc-mingw-w64-x86-64 nsis
+```
+
+Build the launcher and NSIS installer:
+
+```bash
+./scripts/build-windows.sh
+```
+
+This produces:
+
+* `dist/ModalFilesGUI.exe` - the small Windows launcher.
+* `dist/ModalFiles-Setup-<version>.exe` - the NSIS installer for the GUI.
+* `dist/ModalFiles-Setup.exe` - the legacy CLI drive-mapping installer.
+
+### Install on Windows 11
+
+1. Copy `dist/ModalFiles-Setup-<version>.exe` to the Windows machine and run it.
+2. The installer is per-user (no admin required) and installs to
+   `%LOCALAPPDATA%\ModalFiles`.
+3. Launch **ModalFiles** from the Start Menu or Desktop shortcut.
+4. In **Settings**, enter the Modal HTTPS base URL, WebDAV username, and
+   password, then click **Test connection**.
+5. Optionally click **Map / remap drive** to create the persistent WebDAV drive.
+
+Requirements on the Windows machine:
+
+* Windows 11 (optimized for Windows 11; WebView/Edge app mode is used for the UI).
+* Python 3.10+ installed and available as `py -3`, `pythonw.exe`, or on PATH.
+* Windows **WebClient** service running for mapped WebDAV drives.
+
+The GUI runs a local Python server on `127.0.0.1` and opens in Microsoft Edge
+app mode when available. The mapped WebDAV drive remains on the system; the GUI
+manages and visualizes it but does not replace it.
+
+### Legacy CLI drive mapper
+
+The original console drive-mapping installer is still built as
+`dist/ModalFiles-Setup.exe`. It asks for the base HTTPS endpoint URL, a drive
+letter, and the WebDAV username; Windows `net use` prompts for the password. To
+disconnect, run `net use Z: /delete` with the actual drive letter.
 
 Windows' **WebClient** service must be installed and running. Windows' WebDAV
 client may impose its own file-size, timeout, and Basic-authentication policies;
@@ -59,6 +103,23 @@ upload. The limits are 10,000 entries and 10 GiB total uncompressed data. These
 limits are safety checks, not a guarantee against resource exhaustion. Large
 archives can take longer than a Windows client or Modal web request timeout.
 
+### Cloud ZIP from GUI/API
+
+The GUI can compress a remote folder into a ZIP in the cloud. The server prefers
+7-Zip (`7zz`/`7z`/`7za`) when available and falls back to Python's `zipfile`
+module. The ZIP is written next to the source folder (e.g. `photos/` →
+`photos.zip`) and committed to the Modal Volume. Progress is exposed through the
+authenticated API and streamed in the GUI.
+
+Authenticated API endpoints (same Basic auth as WebDAV):
+
+* `GET /__modalfiles__/api/status` - server status and transfer counters.
+* `GET /__modalfiles__/api/metrics` - SSE metrics stream.
+* `GET /__modalfiles__/api/logs` - SSE log stream.
+* `GET /__modalfiles__/api/files?path=/` - file listing with ZIP indicators.
+* `POST /__modalfiles__/api/zip` - start a cloud ZIP job for a folder path.
+* `GET /__modalfiles__/api/zip/jobs` - list ZIP jobs and progress.
+
 ## Operational limitations
 
 * This is a single-writer design, not a distributed filesystem. One Modal
@@ -76,11 +137,25 @@ archives can take longer than a Windows client or Modal web request timeout.
   available. The setup executable and Explorer mapping should be verified on
   the target Windows installation.
 
+## Local GUI development
+
+Run the GUI locally (serves on `127.0.0.1:8765` by default):
+
+```bash
+uv run python -m modalfiles.gui.server
+# or, after installing the package:
+modalfiles-gui
+```
+
+The local GUI proxies authenticated requests to your deployed ModalFiles server.
+Configure the server URL and credentials in the Settings view.
+
 ## Local tests
 
 `uv sync` then `uv run pytest -q`.
-Tests exercise WebDAV authentication, file operations, volume callbacks and ZIP
-safety locally; they do not deploy to Modal or exercise Windows Explorer.
+Tests exercise WebDAV authentication, file operations, volume callbacks, ZIP
+safety, and GUI API endpoints locally; they do not deploy to Modal or exercise
+Windows Explorer.
 
 ## Dependency management
 
