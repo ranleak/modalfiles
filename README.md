@@ -40,24 +40,31 @@ folders that do not already have a corresponding ZIP.
 Install the Windows build tools on Linux:
 
 ```bash
-sudo apt install gcc-mingw-w64-x86-64 nsis
+sudo apt install gcc-mingw-w64-x86-64 nsis curl
 ```
 
-Build the launcher and NSIS installer:
+Build the launcher, bundled embeddable Python runtime, portable bundle, and NSIS installer:
 
 ```bash
 ./scripts/build-windows.sh
 ```
 
+By default, the build script downloads the pinned official Windows embeddable
+Python package (`3.14.10`, SHA-256 verified) into `.cache/windows/` and stages
+a miniature bundled runtime (`python/`) alongside `ModalFilesGUI.exe`. To build
+offline with a pre-downloaded zip, pass `PYTHON_EMBED_ZIP=/path/to/python-*-embed-amd64.zip`.
+
 This produces:
 
-* `dist/ModalFilesGUI.exe` - the small Windows launcher.
-* `dist/ModalFiles-Setup-<version>.exe` - the NSIS installer for the GUI.
+* `dist/ModalFiles-Setup-<version>.exe` - the NSIS installer for the GUI (includes the bundled Python runtime).
+* `dist/ModalFilesGUI/` and `dist/ModalFilesGUI-<version>-win64.zip` - self-contained portable GUI directory and archive.
+* `dist/ModalFilesGUI.exe` - the standalone Windows GUI launcher executable.
 * `dist/ModalFiles-Setup.exe` - the legacy CLI drive-mapping installer.
 
 ### Install on Windows 11
 
-1. Copy `dist/ModalFiles-Setup-<version>.exe` to the Windows machine and run it.
+1. Copy `dist/ModalFiles-Setup-<version>.exe` to the Windows machine and run it
+   (or extract `dist/ModalFilesGUI-<version>-win64.zip` and run `ModalFilesGUI.exe` directly).
 2. The installer is per-user (no admin required) and installs to
    `%LOCALAPPDATA%\ModalFiles`.
 3. Launch **ModalFiles** from the Start Menu or Desktop shortcut.
@@ -68,12 +75,14 @@ This produces:
 Requirements on the Windows machine:
 
 * Windows 11 (optimized for Windows 11; WebView/Edge app mode is used for the UI).
-* Python 3.10+ installed and available as `py -3`, `pythonw.exe`, or on PATH.
+* No separate Python installation required — a miniature bundled Python runtime
+  is packaged with the application (`python\pythonw.exe`).
 * Windows **WebClient** service running for mapped WebDAV drives.
 
-The GUI runs a local Python server on `127.0.0.1` and opens in Microsoft Edge
-app mode when available. The mapped WebDAV drive remains on the system; the GUI
-manages and visualizes it but does not replace it.
+The GUI executes its bundled Python runtime to run a local server on
+`127.0.0.1` and opens in Microsoft Edge app mode when available. The mapped
+WebDAV drive remains on the system; the GUI manages and visualizes it but does
+not replace it.
 
 ### Legacy CLI drive mapper
 

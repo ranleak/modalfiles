@@ -1,8 +1,10 @@
 ; ModalFiles Windows GUI Installer
-; Build on Linux: makensis -DVERSION=0.2.0 -DSOURCE_DIR=. -DDIST_DIR=dist windows/ModalFiles.nsi
+; Build on Linux: ./scripts/build-windows.sh
+; Or directly: makensis -DVERSION=0.2.0 -DSOURCE_DIR=. -DDIST_DIR=dist -DPYTHON_EMBED_DIR=dist/ModalFilesGUI/python windows/ModalFiles.nsi
 
 !include "MUI2.nsh"
 !include "FileFunc.nsh"
+!include "LogicLib.nsh"
 
 !ifndef VERSION
   !define VERSION "0.2.0"
@@ -12,6 +14,9 @@
 !endif
 !ifndef DIST_DIR
   !define DIST_DIR "../dist"
+!endif
+!ifndef PYTHON_EMBED_DIR
+  !define PYTHON_EMBED_DIR "${DIST_DIR}/ModalFilesGUI/python"
 !endif
 
 !define APPNAME "ModalFiles"
@@ -43,8 +48,21 @@ Unicode true
 
 !insertmacro GetSize
 
+!macro StopModalFilesRuntime
+  System::Call 'Kernel32::SetEnvironmentVariable(t "MODALFILES_INSTDIR", t "$INSTDIR")'
+  nsExec::Exec 'powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "$$d=[IO.Path]::GetFullPath($$env:MODALFILES_INSTDIR).TrimEnd([char]92)+[char]92; Get-Process -Name python,pythonw,ModalFilesGUI -ErrorAction SilentlyContinue | Where-Object { $$_.Path -and $$_.Path.StartsWith($$d,[StringComparison]::OrdinalIgnoreCase) } | Stop-Process -Force"'
+!macroend
+
 Section "ModalFiles GUI" SecMain
   SectionIn RO
+
+  ; Stop any running runtime from this install directory before replacing files
+  ${If} ${FileExists} "$INSTDIR\python\pythonw.exe"
+  ${OrIf} ${FileExists} "$INSTDIR\${EXE_NAME}"
+    !insertmacro StopModalFilesRuntime
+  ${EndIf}
+  RMDir /r "$INSTDIR\python"
+
   SetOutPath "$INSTDIR"
 
   ; Launcher
@@ -56,6 +74,10 @@ Section "ModalFiles GUI" SecMain
   File "${SOURCE_DIR}/pyproject.toml"
   File "${SOURCE_DIR}/modal_app.py"
 
+  ; Bundled miniature Python runtime (embeddable package)
+  SetOutPath "$INSTDIR\python"
+  File /r "${PYTHON_EMBED_DIR}\*"
+
   ; Python package
   SetOutPath "$INSTDIR\modalfiles"
   File /r /x __pycache__ /x "*.pyc" /x ".pytest_cache" "${SOURCE_DIR}/modalfiles\*.*"
@@ -63,6 +85,7 @@ Section "ModalFiles GUI" SecMain
   ; Scripts (optional, useful for users)
   SetOutPath "$INSTDIR\scripts"
   File /nonfatal "${SOURCE_DIR}/scripts\build-windows.sh"
+  File /nonfatal "${SOURCE_DIR}/scripts\prepare-python-embed.py"
 
   SetOutPath "$INSTDIR"
 
@@ -94,6 +117,11 @@ Section "ModalFiles GUI" SecMain
 SectionEnd
 
 Section "Uninstall"
+  ${If} ${FileExists} "$INSTDIR\python\pythonw.exe"
+  ${OrIf} ${FileExists} "$INSTDIR\${EXE_NAME}"
+    !insertmacro StopModalFilesRuntime
+  ${EndIf}
+
   Delete "$INSTDIR\${EXE_NAME}"
   Delete "$INSTDIR\Uninstall.exe"
   Delete "$INSTDIR\README.md"
@@ -101,6 +129,7 @@ Section "Uninstall"
   Delete "$INSTDIR\pyproject.toml"
   Delete "$INSTDIR\modal_app.py"
 
+  RMDir /r "$INSTDIR\python"
   RMDir /r "$INSTDIR\modalfiles"
   RMDir /r "$INSTDIR\scripts"
   RMDir "$INSTDIR"
